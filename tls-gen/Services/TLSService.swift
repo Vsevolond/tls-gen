@@ -21,6 +21,7 @@ struct CertificateInputInfo {
     
     let version: TLSCertificate.Version
     let commonName: String
+    let organizationName: String
     let signing: Signing
     let lifetime: TimeInterval
     let extensions: TLSCertificate.Extensions
@@ -79,8 +80,12 @@ final class TLSService {
     
     func generateCertificate(from input: CertificateInputInfo) throws -> CertificateOutputInfo {
         let privateKey = try Certificate.PrivateKey.makeWithSignatureAlgorithm(input.algorithm)
-        let subject = try DistinguishedName { CommonName(input.commonName) }
         let serialNumber = Certificate.SerialNumber()
+        
+        let subject = try DistinguishedName {
+            CommonName(input.commonName)
+            OrganizationName(input.organizationName)
+        }
         
         let createDate = Date()
         let expirationDate = createDate.addingTimeInterval(input.lifetime)
@@ -159,7 +164,7 @@ final class TLSService {
         }
     }
     
-    func loadCertificate(byName name: String) throws -> (Certificate, Certificate.PrivateKey) {
+    func loadCertificateWithPrivateKey(byName name: String) throws -> (Certificate, Certificate.PrivateKey) {
         let commonName = name.lowercased().replacingOccurrences(of: " ", with: "-")
         
         let certPath = basePath.appendingPathComponent("\(commonName).crt")
@@ -253,8 +258,8 @@ final class TLSService {
         return try saveContainer(data: p12Data, withName: name)
     }
     
-    func loadRepresentation(certPath: String) -> String? {
-        guard let bio = BIO_new_file(certPath, "r") else { return nil }
+    func loadCertificateRepresentation(url: URL) -> String? {
+        guard let bio = BIO_new_file(url.path, "r") else { return nil }
         defer { BIO_free(bio) }
         
         guard let cert = PEM_read_bio_X509(bio, nil, nil, nil) else { return nil }
@@ -273,8 +278,8 @@ final class TLSService {
         return String(decoding: buffer[0..<Int(bytesRead)], as: UTF8.self)
     }
     
-    func loadRepresentation(keyPath: String) -> String? {
-        guard let bio = BIO_new_file(keyPath, "r") else { return nil }
+    func loadPrivateKeyRepresentation(url: URL) -> String? {
+        guard let bio = BIO_new_file(url.path, "r") else { return nil }
         defer { BIO_free(bio) }
 
         guard let pkey = PEM_read_bio_PrivateKey(bio, nil, nil, nil) else { return nil }

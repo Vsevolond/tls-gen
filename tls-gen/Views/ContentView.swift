@@ -32,7 +32,6 @@ struct ContentView: View {
     
     @State private var currentSection: CertificatesSection = .allCertificates
     @State private var createCertPresented = false
-    @State private var selectedCertificate: TLSCertificate? = nil
     
     var body: some View {
         NavigationSplitView {
@@ -46,58 +45,23 @@ struct ContentView: View {
         } content: {
             switch currentSection {
             case .allCertificates:
-                List(model.certs, id: \.id) { cert in
-                    NavigationLink {
-                        CertificateView(cert: cert, model: model)
-                        
-                    } label: {
-                        CertificateCellView(cert: cert, model: model)
-                    }
-                }
+                certificatesList(certs: model.certs)
                 
             case .selfSignedCA:
-                List(model.selfSignedCertAuthorites, id: \.id) { cert in
-                    NavigationLink {
-                        CertificateView(cert: cert, model: model)
-                        
-                    } label: {
-                        CertificateCellView(cert: cert, model: model)
-                    }
-                }
+                certificatesList(certs: model.selfSignedCertAuthorites)
                 
             case .intermediateCA:
-                List(model.intermediateCertAuthorities, id: \.id) { cert in
-                    NavigationLink {
-                        CertificateView(cert: cert, model: model)
-                        
-                    } label: {
-                        CertificateCellView(cert: cert, model: model)
-                    }
-                }
+                certificatesList(certs: model.intermediateCertAuthorities)
                 
             case .nonCACertificates:
-                List(model.nonCertAuthorities, id: \.id) { cert in
-                    NavigationLink {
-                        CertificateView(cert: cert, model: model)
-                        
-                    } label: {
-                        CertificateCellView(cert: cert, model: model)
-                    }
-                }
+                certificatesList(certs: model.nonCertAuthorities)
                 
             case .leafCertificates:
-                List(model.leafCertificates, id: \.id) { cert in
-                    NavigationLink {
-                        CertificateView(cert: cert, model: model)
-                        
-                    } label: {
-                        CertificateCellView(cert: cert, model: model)
-                    }
-                }
+                certificatesList(certs: model.leafCertificates)
             }
             
         } detail: {
-            
+            EmptyView()
         }
         .navigationTitle(currentSection.rawValue)
         .toolbar {
@@ -116,6 +80,18 @@ struct ContentView: View {
         }
         .onAppear {
             model.loadCertificates()
+        }
+    }
+    
+    private func certificatesList(certs: [TLSCertificate]) -> some View {
+        List(certs, id: \.id) { cert in
+            NavigationLink {
+                CertificateView(cert: cert, model: model)
+                    .id(cert.id)
+                
+            } label: {
+                CertificateCellView(cert: cert, model: model)
+            }
         }
     }
 }

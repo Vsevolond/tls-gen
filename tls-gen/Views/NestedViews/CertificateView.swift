@@ -28,7 +28,10 @@ struct CertificateView: View {
                         ProgressView()
                         
                     } else {
-                        ContentUnavailableView("Can't load certificate representation", systemImage: "xmark.octagon.fill")
+                        ContentUnavailableView(
+                            "Can't load certificate representation",
+                            systemImage: "xmark.octagon.fill"
+                        )
                     }
                 }
             }
@@ -43,7 +46,10 @@ struct CertificateView: View {
                         ProgressView()
                         
                     } else {
-                        ContentUnavailableView("Can't load private key representation", systemImage: "xmark.octagon.fill")
+                        ContentUnavailableView(
+                            "Can't load private key representation",
+                            systemImage: "xmark.octagon.fill"
+                        )
                     }
                 }
             }

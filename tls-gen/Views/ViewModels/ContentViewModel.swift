@@ -92,6 +92,7 @@ final class ContentViewModel: ObservableObject {
     func createCertificate(
         version: TLSCertificate.Version,
         commonName: String,
+        organizationName: String,
         signing: TLSCertificate.Signing,
         lifetime: TimeInterval,
         extensions: TLSCertificate.Extensions,
@@ -109,6 +110,7 @@ final class ContentViewModel: ObservableObject {
                 let input = try makeCertificateInputInfo(
                     version: version,
                     commonName: commonName,
+                    organizationName: organizationName,
                     signing: signing,
                     lifetime: lifetime,
                     extensions: extensions,
@@ -130,6 +132,7 @@ final class ContentViewModel: ObservableObject {
                     let certificate = TLSCertificate(
                         version: version,
                         commonName: commonName,
+                        organizationName: organizationName,
                         serialNumber: output.serialNumber,
                         createDate: output.createDate,
                         expirationDate: output.expirationDate,
@@ -152,6 +155,7 @@ final class ContentViewModel: ObservableObject {
                     let certificate = TLSCertificate(
                         version: version,
                         commonName: commonName,
+                        organizationName: organizationName,
                         serialNumber: output.serialNumber,
                         createDate: output.createDate,
                         expirationDate: output.expirationDate,
@@ -211,8 +215,8 @@ final class ContentViewModel: ObservableObject {
         completion: @escaping (_ certificate: String?, _ privateKey: String?) -> Void
     ) {
         Task {
-            let certificate = tlsService.loadRepresentation(certPath: cert.certUrl.path)
-            let privateKey = tlsService.loadRepresentation(keyPath: cert.keyUrl.path)
+            let certificate = tlsService.loadCertificateRepresentation(url: cert.certUrl)
+            let privateKey = tlsService.loadPrivateKeyRepresentation(url: cert.keyUrl)
             
             Task { @MainActor in
                 completion(certificate, privateKey)
@@ -223,6 +227,7 @@ final class ContentViewModel: ObservableObject {
     private func makeCertificateInputInfo(
         version: TLSCertificate.Version,
         commonName: String,
+        organizationName: String,
         signing: TLSCertificate.Signing,
         lifetime: TimeInterval,
         extensions: TLSCertificate.Extensions,
@@ -233,6 +238,7 @@ final class ContentViewModel: ObservableObject {
             return CertificateInputInfo(
                 version: version,
                 commonName: commonName,
+                organizationName: organizationName,
                 signing: .selfSigned,
                 lifetime: lifetime,
                 extensions: extensions,
@@ -240,11 +246,12 @@ final class ContentViewModel: ObservableObject {
             )
             
         case .signedByCA(_, let issuerName):
-            let (issuerCert, privateKey) = try tlsService.loadCertificate(byName: issuerName)
+            let (issuerCert, privateKey) = try tlsService.loadCertificateWithPrivateKey(byName: issuerName)
             
             return CertificateInputInfo(
                 version: version,
                 commonName: commonName,
+                organizationName: organizationName,
                 signing: .signedByCA(issuerCert: issuerCert, privateKey: privateKey),
                 lifetime: lifetime,
                 extensions: extensions,

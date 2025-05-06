@@ -12,6 +12,7 @@ final class TLSCertificateObject: Object {
     @Persisted(primaryKey: true) var id: UUID
     @Persisted var version: TLSCertificate.Version
     @Persisted var commonName: String
+    @Persisted var organizationName: String
     @Persisted var serialNumber: String
     @Persisted var createDate: Date
     @Persisted var expirationDate: Date
@@ -31,6 +32,7 @@ extension TLSCertificateObject {
         self.id = cert.id
         self.version =  cert.version
         self.commonName = cert.commonName
+        self.organizationName = cert.organizationName
         self.serialNumber = cert.serialNumber
         self.createDate = cert.createDate
         self.expirationDate = cert.expirationDate

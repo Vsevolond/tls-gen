@@ -69,6 +69,52 @@ struct CertificateCellView: View {
                         .font(.subheadline)
                         .bold()
                     
+                    Text("Basic Constraints: ")
+                        .font(.subheadline)
+                        .foregroundStyle(.gray)
+                    + Text(cert.extensions.basicConstraints.description)
+                        .font(.subheadline)
+                        .bold()
+                    
+                    if !cert.extensions.keyUsages.isEmpty {
+                        Text("Key Usage: ")
+                            .font(.subheadline)
+                            .foregroundStyle(.gray)
+                        + Text(cert.extensions.keyUsages.description)
+                            .font(.subheadline)
+                            .bold()
+                    }
+                    
+                    if !cert.extensions.extendedKeyUsages.isEmpty {
+                        Text("Extended Key Usage: ")
+                            .font(.subheadline)
+                            .foregroundStyle(.gray)
+                        + Text(cert.extensions.extendedKeyUsages.description)
+                            .font(.subheadline)
+                            .bold()
+                    }
+                    
+                    if cert.extensions.subjectKeyIdentifierIncludes {
+                        Text("Subject Key Identifier ☑️")
+                            .font(.subheadline)
+                            .foregroundStyle(.gray)
+                    }
+                    
+                    if cert.extensions.authorityKeyIdentifierIncludes {
+                        Text("Authority Key Identifier ☑️")
+                            .font(.subheadline)
+                            .foregroundStyle(.gray)
+                    }
+                    
+                    if !cert.extensions.subjectAlternativeNames.isEmpty {
+                        Text("Subject Alternative Names: ")
+                            .font(.subheadline)
+                            .foregroundStyle(.gray)
+                        + Text(cert.extensions.subjectAlternativeNames.description)
+                            .font(.subheadline)
+                            .bold()
+                    }
+                    
                     if let p12Info = cert.p12Info {
                         HStack {
                             Text("P12 Password: ")
@@ -178,7 +224,6 @@ struct CertificateCellView: View {
 }
 
 private extension TLSCertificate.Signing {
-    
     var description: String {
         switch self {
         case .selfSigned:
@@ -189,8 +234,76 @@ private extension TLSCertificate.Signing {
     }
 }
 
+private extension TLSCertificate.Extensions.BasicConstraints {
+    var description: String {
+        switch self {
+        case .isCertificateAuthority(let maxPathLength):
+            switch maxPathLength {
+            case .limited(let count):
+                return "CA = true, pathlen = \(count)"
+                
+            case .unlimited:
+                return "CA = true"
+            }
+            
+        case .notCertificateAuthority:
+            return "CA = false"
+        }
+    }
+}
+
+private extension Set where Element == TLSCertificate.Extensions.KeyUsage {
+    var description: String {
+        let array = Array(self).sorted(by: { $0.rawValue < $1.rawValue }).map { $0.description }
+        return array.joined(separator: ", ")
+    }
+}
+
+private extension Set where Element == TLSCertificate.Extensions.ExtendedKeyUsage {
+    var description: String {
+        let array = Array(self).sorted(by: { $0.rawValue < $1.rawValue }).map { $0.description }
+        return array.joined(separator: ", ")
+    }
+}
+
+private extension Set where Element == TLSCertificate.Extensions.SubjectAlternativeName {
+    var description: String {
+        let array = Array(self).map { $0.description }
+        return array.joined(separator: ", ")
+    }
+}
+
+private extension TLSCertificate.Extensions.KeyUsage {
+    var description: String {
+        return switch self {
+        case .digitalSignature: "digital_signature"
+        case .keyEncipherment: "key_encipherment"
+        case .keyAgreement: "key_agreement"
+        case .keyCertSign: "key_cert_sign"
+        case .cRLSign: "cRL_sign"
+        }
+    }
+}
+
+private extension TLSCertificate.Extensions.ExtendedKeyUsage {
+    var description: String {
+        return switch self {
+        case .serverAuth: "server_auth"
+        case .clientAuth: "client_auth"
+        }
+    }
+}
+
+private extension TLSCertificate.Extensions.SubjectAlternativeName {
+    var description: String {
+        return switch self {
+        case .dnsName(let dns): "DNS - \(dns)"
+        case .ipAddress(let ipv4): "IP - \(ipv4.debugDescription)"
+        }
+    }
+}
+
 private extension Date {
-    
     var medium: String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium

@@ -42,6 +42,7 @@ struct CertificateCreateView: View {
     
     @State private var version: TLSCertificate.Version = .v3
     @State private var commonName = ""
+    @State private var organizationName = ""
     @State private var signing: Signing = .selfSigned
     @State private var certAuthority: TLSCertificate? = nil
     @State private var lifetime = TimeInterval.year
@@ -81,6 +82,7 @@ struct CertificateCreateView: View {
         isCreating
         || subjectAlternativeNamePresented
         || commonName.isEmpty
+        || organizationName.isEmpty
         || (signing == .signedByCA && certAuthority == nil)
         || (needP12Container && p12Password.isEmpty)
         || (includeKeyUsages && keyUsages.isEmpty)
@@ -91,7 +93,11 @@ struct CertificateCreateView: View {
         VStack {
             Form {
                 versionPicker
-                commonNameField
+                
+                VStack(spacing: 16) {
+                    commonNameField
+                    organizationNameField
+                }
                 
                 VStack(spacing: 16) {
                     signingPicker
@@ -187,6 +193,11 @@ struct CertificateCreateView: View {
     
     private var commonNameField: some View {
         TextField("Common Name", text: $commonName)
+            .textFieldStyle(.roundedBorder)
+    }
+    
+    private var organizationNameField: some View {
+        TextField("Organization Name", text: $organizationName)
             .textFieldStyle(.roundedBorder)
     }
     
@@ -397,6 +408,7 @@ struct CertificateCreateView: View {
                 model.createCertificate(
                     version: version,
                     commonName: commonName,
+                    organizationName: organizationName,
                     signing: certSigning,
                     lifetime: lifetime,
                     extensions: extensions,

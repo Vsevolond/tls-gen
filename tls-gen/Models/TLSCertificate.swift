@@ -31,7 +31,7 @@ struct TLSCertificate: Hashable {
             case notCertificateAuthority
         }
         
-        enum KeyUsage: Codable, Hashable, CaseIterable {
+        enum KeyUsage: Int, Codable, Hashable, CaseIterable {
             case digitalSignature
             case keyEncipherment
             case keyAgreement
@@ -39,7 +39,7 @@ struct TLSCertificate: Hashable {
             case cRLSign
         }
         
-        enum ExtendedKeyUsage: Codable, Hashable, CaseIterable {
+        enum ExtendedKeyUsage: Int, Codable, Hashable, CaseIterable {
             case serverAuth
             case clientAuth
         }
@@ -83,6 +83,7 @@ struct TLSCertificate: Hashable {
     let id: UUID
     let version: Version
     let commonName: String
+    let organizationName: String
     let serialNumber: String
     let createDate: Date
     let expirationDate: Date
@@ -97,6 +98,7 @@ struct TLSCertificate: Hashable {
         id: UUID = UUID(),
         version: Version,
         commonName: String,
+        organizationName: String,
         serialNumber: String,
         createDate: Date,
         expirationDate: Date,
@@ -110,6 +112,7 @@ struct TLSCertificate: Hashable {
         self.id = id
         self.version = version
         self.commonName = commonName
+        self.organizationName = organizationName
         self.serialNumber = serialNumber
         self.createDate = createDate
         self.expirationDate = expirationDate
@@ -128,6 +131,7 @@ extension TLSCertificate {
         self.id = object.id
         self.version = object.version
         self.commonName = object.commonName
+        self.organizationName = object.organizationName
         self.serialNumber = object.serialNumber
         self.createDate = object.createDate
         self.expirationDate = object.expirationDate
