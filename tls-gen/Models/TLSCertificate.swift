@@ -126,7 +126,6 @@ struct TLSCertificate: Hashable {
 }
 
 extension TLSCertificate {
-    
     init(from object: TLSCertificateObject) throws {
         self.id = object.id
         self.version = object.version

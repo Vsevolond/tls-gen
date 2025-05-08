@@ -13,14 +13,18 @@ struct CertificateView: View {
     
     @State private var isLoading = true
     
+    @State private var certRepresentationSize: CGFloat = 12
+    @State private var keyRepresentationSize: CGFloat = 12
+    
     @State private var certRepresentation: String? = nil
     @State private var keyRepresentation: String? = nil
     
     var body: some View {
         List {
-            Section("Certificate") {
+            Section {
                 if let certRepresentation {
                     Text(certRepresentation)
+                        .font(.system(size: certRepresentationSize))
                         .monospaced()
                     
                 } else {
@@ -34,11 +38,21 @@ struct CertificateView: View {
                         )
                     }
                 }
+                
+            } header: {
+                HStack {
+                    Text("Certificate")
+                    Spacer()
+                    
+                    Stepper("", value: $certRepresentationSize, in: 8...16)
+                }
+                .padding(.trailing)
             }
             
-            Section("Private Key") {
+            Section {
                 if let keyRepresentation {
                     Text(keyRepresentation)
+                        .font(.system(size: keyRepresentationSize))
                         .monospaced()
                     
                 } else {
@@ -52,9 +66,19 @@ struct CertificateView: View {
                         )
                     }
                 }
+                
+            } header: {
+                HStack {
+                    Text("Private Key")
+                    Spacer()
+                    
+                    Stepper("", value: $keyRepresentationSize, in: 8...16)
+                }
+                .padding(.trailing)
             }
         }
         .listStyle(.plain)
+        .scrollIndicators(.hidden)
         .onAppear {
             model.loadRepresentation(of: cert) { certString, keyString in
                 certRepresentation = certString

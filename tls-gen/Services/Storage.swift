@@ -23,7 +23,7 @@ final class Storage {
         Realm.Configuration.defaultConfiguration = Realm.Configuration(deleteRealmIfMigrationNeeded: true)
     }
     
-    func fetch() async throws -> [TLSCertificate] {
+    func fetchCertificates() async throws -> [TLSCertificate] {
         try await withCheckedThrowingContinuation { continuation in
             do {
                 let store = try Realm()
@@ -33,13 +33,29 @@ final class Storage {
                 continuation.resume(returning: certs)
                 
             } catch let err {
-                error("objects fetching error: \(err)")
+                error("certificate objects fetching error: \(err)")
                 continuation.resume(throwing: StorageError.fetchingFailed)
             }
         }
     }
     
-    func save(cert: TLSCertificate) async throws {
+    func fetchTemplates() async throws -> [TLSCertificateTemplate] {
+        try await withCheckedThrowingContinuation { continuation in
+            do {
+                let store = try Realm()
+                let objects = store.objects(TLSCertificateTemplateObject.self).toArray()
+                
+                let temps = try objects.map { try TLSCertificateTemplate(from: $0) }
+                continuation.resume(returning: temps)
+                
+            } catch let err {
+                error("template objects fetching error: \(err)")
+                continuation.resume(throwing: StorageError.fetchingFailed)
+            }
+        }
+    }
+    
+    func saveCertificate(_ cert: TLSCertificate) async throws {
         try await withCheckedThrowingContinuation { continuation in
             do {
                 let store = try Realm()
@@ -49,18 +65,37 @@ final class Storage {
                 continuation.resume()
                 
             } catch let err {
-                error("object saving error: \(err)")
+                error("certificate object saving error: \(err)")
                 continuation.resume(throwing: StorageError.savingFailed)
             }
         }
     }
     
-    func delete(cert: TLSCertificate) async throws {
+    func saveTemplate(_ temp: TLSCertificateTemplate) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            do {
+                let store = try Realm()
+                let object = try TLSCertificateTemplateObject(from: temp)
+                
+                try store.write { store.add(object) }
+                continuation.resume()
+                
+            } catch let err {
+                error("template object saving error: \(err)")
+                continuation.resume(throwing: StorageError.savingFailed)
+            }
+        }
+    }
+    
+    func deleteCertififcate(_ cert: TLSCertificate) async throws {
         try await withCheckedThrowingContinuation { continuation in
             do {
                 let store = try Realm()
                 
-                if let object = store.object(ofType: TLSCertificateObject.self, forPrimaryKey: cert.id) {
+                if let object = store.object(
+                    ofType: TLSCertificateObject.self,
+                    forPrimaryKey: cert.id
+                ) {
                     try store.write {
                         store.delete(object)
                     }
@@ -68,12 +103,39 @@ final class Storage {
                     continuation.resume()
                     
                 } else {
-                    error("no object with id: \(cert.id)")
+                    error("no certificate object with id: \(cert.id)")
                     continuation.resume(throwing: StorageError.noObjectWithId(id: cert.id))
                 }
                 
             } catch let err {
-                error("object deleting error: \(err)")
+                error("certificate object deleting error: \(err)")
+                continuation.resume(throwing: StorageError.deletingFailed)
+            }
+        }
+    }
+    
+    func deleteTemplate(_ temp: TLSCertificateTemplate) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            do {
+                let store = try Realm()
+                
+                if let object = store.object(
+                    ofType: TLSCertificateTemplateObject.self,
+                    forPrimaryKey: temp.id
+                ) {
+                    try store.write {
+                        store.delete(object)
+                    }
+                    
+                    continuation.resume()
+                    
+                } else {
+                    error("no template object with id: \(temp.id)")
+                    continuation.resume(throwing: StorageError.noObjectWithId(id: temp.id))
+                }
+                
+            } catch let err {
+                error("template object deleting error: \(err)")
                 continuation.resume(throwing: StorageError.deletingFailed)
             }
         }

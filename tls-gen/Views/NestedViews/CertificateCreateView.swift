@@ -9,70 +9,52 @@ import SwiftUI
 import Network
 
 struct CertificateCreateView: View {
-    enum Signing: String, CaseIterable, Identifiable {
-        case selfSigned = "Self-Signed"
-        case signedByCA = "Signed by CA"
-        
-        var id: String { rawValue }
+    enum CreateType: Equatable {
+        case newCertificate
+        case newTemplate
+        case templateCertificate(TLSCertificateTemplate)
     }
     
-    enum BasicConstraints: String, CaseIterable, Identifiable {
-        case isCertificateAuthority = "Is Certificate Authority"
-        case notCertificateAuthority = "Not Certificate Authority"
-        
-        var id: String { rawValue }
-    }
+    @ObservedObject private var model: ContentViewModel
+    private let type: CreateType
     
-    enum MaxPathLength: String, CaseIterable, Identifiable {
-        case limited = "Limited"
-        case unlimited = "Unlimited"
-        
-        var id: String { rawValue }
-    }
-    
-    enum SignatureAlgorithm: String, CaseIterable, Identifiable {
-        case rsa = "RSA"
-        case ecdsa = "ECDSA"
-        case eddsaWithCurve25519 = "EdDSA with Curve25519"
-        
-        var id: String { rawValue }
-    }
-    
-    @ObservedObject var model: ContentViewModel
-    
-    @State private var version: TLSCertificate.Version = .v3
-    @State private var commonName = ""
-    @State private var organizationName = ""
-    @State private var signing: Signing = .selfSigned
+    @State private var version: TLSCertificate.Version
+    @State private var organizationName: String
+    @State private var signing: Signing
     @State private var certAuthority: TLSCertificate? = nil
-    @State private var lifetime = TimeInterval.year
+    @State private var lifetime: TimeInterval
     
-    @State private var basicConstraints: BasicConstraints = .notCertificateAuthority
-    @State private var maxPathLength: MaxPathLength = .unlimited
-    @State private var pathLength = 0
+    @State private var commonName = ""
+    @State private var templateName = ""
     
-    @State private var includeKeyUsages = false
-    @State private var keyUsages = Set<TLSCertificate.Extensions.KeyUsage>()
+    @State private var basicConstraints: BasicConstraints
+    @State private var maxPathLength: BasicConstraints.MaxPathLength
+    @State private var pathLength: Int
     
-    @State private var includeExtendedKeyUsages = false
-    @State private var extendedKeyUsages = Set<TLSCertificate.Extensions.ExtendedKeyUsage>()
+    @State private var includeKeyUsages: Bool
+    @State private var keyUsages: Set<TLSCertificate.Extensions.KeyUsage>
     
-    @State private var includeSubjectKeyIdentifier = false
-    @State private var includeAuthorityKeyIdentifier = false
+    @State private var includeExtendedKeyUsages: Bool
+    @State private var extendedKeyUsages: Set<TLSCertificate.Extensions.ExtendedKeyUsage>
     
-    @State private var subjectAlternativeNames = Set<TLSCertificate.Extensions.SubjectAlternativeName>()
-    @State private var subjectAlternativeNamePresented = false
+    @State private var includeSubjectKeyIdentifier: Bool
+    @State private var includeAuthorityKeyIdentifier: Bool
     
-    @State private var signature: SignatureAlgorithm = .rsa
-    @State private var keySize: TLSCertificate.SignatureAlgorithm.RSAKeySize = .bits2048
-    @State private var hashFunction: TLSCertificate.SignatureAlgorithm.HashFunction = .sha256
+    @State private var subjectAlternativeNames: Set<TLSCertificate.Extensions.SubjectAlternativeName>
+    @State private var subjectAlternativeNamePresented: Bool = false
     
-    @State private var needP12Container = false
-    @State private var p12Password = ""
+    @State private var signature: SignatureAlgorithm
+    @State private var keySize: TLSCertificate.SignatureAlgorithm.RSAKeySize
+    @State private var hashFunction: TLSCertificate.SignatureAlgorithm.HashFunction
+    
+    @State private var p12Required: Bool
+    @State private var p12Password: String
     
     @State private var isCreating = false
     @State private var alertPresented = false
-    @State private var alertText = ""
+    @State private var alertText: String? = nil
+    
+    @State private var editingDisabled: Bool
     
     @Environment(\.dismiss) private var dismiss
     
@@ -81,34 +63,81 @@ struct CertificateCreateView: View {
     private var createDisabled: Bool {
         isCreating
         || subjectAlternativeNamePresented
-        || commonName.isEmpty
+        || (type != .newTemplate && commonName.isEmpty)
         || organizationName.isEmpty
         || (signing == .signedByCA && certAuthority == nil)
-        || (needP12Container && p12Password.isEmpty)
+        || (p12Required && p12Password.isEmpty)
         || (includeKeyUsages && keyUsages.isEmpty)
         || (includeExtendedKeyUsages && extendedKeyUsages.isEmpty)
     }
     
+    init(
+        model: ContentViewModel,
+        type: CreateType,
+        signing: Signing = .selfSigned,
+        basicConstraints: BasicConstraints = .notCertificateAuthority
+    ) {
+        switch type {
+        case .newCertificate:
+            self.init(model: model, type: type, signing: signing, basicConstraints: basicConstraints)
+            
+        case .newTemplate:
+            self.init(model: model, type: type)
+            
+        case .templateCertificate(let template):
+            self.init(
+                model: model,
+                type: type,
+                version: template.version,
+                organizationName: template.organizationName,
+                lifetime: template.lifetime,
+                basicConstraints: BasicConstraints.from(template.extensions.basicConstraints),
+                maxPathLength: BasicConstraints.MaxPathLength.from(template.extensions.basicConstraints),
+                pathLength: template.extensions.basicConstraints.pathLength ?? 0,
+                includeKeyUsages: !template.extensions.keyUsages.isEmpty,
+                keyUsages: template.extensions.keyUsages,
+                includeExtendedKeyUsages: !template.extensions.extendedKeyUsages.isEmpty,
+                extendedKeyUsages: template.extensions.extendedKeyUsages,
+                includeSubjectKeyIdentifier: template.extensions.subjectKeyIdentifierIncludes,
+                includeAuthorityKeyIdentifier: template.extensions.authorityKeyIdentifierIncludes,
+                subjectAlternativeNames: template.extensions.subjectAlternativeNames,
+                signature: SignatureAlgorithm.from(template.algorithm),
+                keySize: template.algorithm.keySize ?? .bits2048,
+                hashFunction: template.algorithm.hashFunction ?? .sha256,
+                p12Required: template.p12Info.isRequired,
+                p12Password: template.p12Info.password ?? "",
+                editingDisabled: true
+            )
+        }
+    }
+    
     var body: some View {
         VStack {
+            if case .templateCertificate = type {
+                editingButton
+            }
+            
             Form {
-                versionPicker
-                
-                VStack(spacing: 16) {
-                    commonNameField
-                    organizationNameField
+                if case .newTemplate = type {
+                    templateNameField
                 }
                 
-                VStack(spacing: 16) {
-                    signingPicker
+                versionPicker
+                
+                if case .newTemplate = type {
+                    organizationNameField
                     
-                    if signing == .signedByCA {
-                        Picker("Certificate Authority", selection: $certAuthority) {
-                            ForEach(model.availableCertAuthorities, id: \.id) { authority in
-                                Text(authority.commonName)
-                                    .tag(authority)
-                            }
-                            .id(certAuthority?.id)
+                } else {
+                    VStack(spacing: 16) {
+                        commonNameField
+                        organizationNameField
+                    }
+                    
+                    VStack(spacing: 16) {
+                        signingPicker
+                        
+                        if signing == .signedByCA {
+                            certAuthorityPicker
                         }
                     }
                 }
@@ -117,13 +146,12 @@ struct CertificateCreateView: View {
                 algorithmPicker
                 
                 VStack(spacing: 16) {
-                    makeP12Toggle
+                    p12RequirementToggle
                     
-                    if needP12Container {
+                    if p12Required {
                         p12PasswordField
                     }
                 }
-                
                 
                 Section("Extensions") {
                     VStack(spacing: 16) {
@@ -173,12 +201,28 @@ struct CertificateCreateView: View {
             }
         }
         .alert("Error", isPresented: $alertPresented, actions: {
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel) {
+                alertText = nil
+            }
             
         }, message: {
-            Text(alertText)
+            Text(alertText ?? "Unknown")
         })
         .padding()
+    }
+    
+    private var editingButton: some View {
+        HStack {
+            Spacer()
+            
+            Button {
+                editingDisabled.toggle()
+                
+            } label: {
+                Image(systemName: editingDisabled ? "lock.fill" : "lock.open")
+            }
+            .buttonStyle(.plain)
+        }
     }
     
     private var versionPicker: some View {
@@ -189,6 +233,7 @@ struct CertificateCreateView: View {
             }
         }
         .pickerStyle(.segmented)
+        .disabled(editingDisabled)
     }
     
     private var commonNameField: some View {
@@ -196,9 +241,15 @@ struct CertificateCreateView: View {
             .textFieldStyle(.roundedBorder)
     }
     
+    private var templateNameField: some View {
+        TextField("Template Name", text: $templateName)
+            .textFieldStyle(.roundedBorder)
+    }
+    
     private var organizationNameField: some View {
         TextField("Organization Name", text: $organizationName)
             .textFieldStyle(.roundedBorder)
+            .disabled(editingDisabled)
     }
     
     private var signingPicker: some View {
@@ -211,6 +262,16 @@ struct CertificateCreateView: View {
         .pickerStyle(.segmented)
     }
     
+    private var certAuthorityPicker: some View {
+        Picker("Certificate Authority", selection: $certAuthority) {
+            ForEach(model.availableCertAuthorities, id: \.id) { authority in
+                Text(authority.commonName)
+                    .tag(authority)
+            }
+            .id(certAuthority?.id)
+        }
+    }
+    
     private var lifetimePicker: some View {
         Picker("Lifetime", selection: $lifetime) {
             ForEach(availableLifetimes, id: \.self) { time in
@@ -220,6 +281,7 @@ struct CertificateCreateView: View {
                     .tag(time)
             }
         }
+        .disabled(editingDisabled)
     }
     
     private var algorithmPicker: some View {
@@ -250,16 +312,19 @@ struct CertificateCreateView: View {
                 }
             }
         }
+        .disabled(editingDisabled)
     }
     
-    private var makeP12Toggle: some View {
-        Toggle("Make P12 Container", isOn: $needP12Container)
+    private var p12RequirementToggle: some View {
+        Toggle("Make P12 Container", isOn: $p12Required)
             .toggleStyle(.switch)
+            .disabled(editingDisabled)
     }
     
     private var p12PasswordField: some View {
         TextField("P12 Password", text: $p12Password)
             .textFieldStyle(.roundedBorder)
+            .disabled(editingDisabled)
     }
     
     private var basicConstraintsPicker: some View {
@@ -269,16 +334,18 @@ struct CertificateCreateView: View {
                     .tag(constraints)
             }
         }
+        .disabled(editingDisabled)
     }
     
     private var maxPathLengthPicker: some View {
         Picker("Max Path Length", selection: $maxPathLength) {
-            ForEach(MaxPathLength.allCases) { length in
+            ForEach(BasicConstraints.MaxPathLength.allCases) { length in
                 Text(length.rawValue)
                     .tag(length)
             }
         }
         .pickerStyle(.segmented)
+        .disabled(editingDisabled)
     }
     
     private var pathLengthPicker: some View {
@@ -288,11 +355,13 @@ struct CertificateCreateView: View {
                     .tag(length)
             }
         }
+        .disabled(editingDisabled)
     }
     
     private var keyUsagesToggle: some View {
         Toggle("Key Usages", isOn: $includeKeyUsages)
             .toggleStyle(.switch)
+            .disabled(editingDisabled)
     }
     
     private var keyUsagesCheckList: some View {
@@ -315,11 +384,13 @@ struct CertificateCreateView: View {
             )
             .toggleStyle(.checkbox)
         }
+        .disabled(editingDisabled)
     }
     
     private var extendedKeyUsagesToggle: some View {
         Toggle("Extended Key Usages", isOn: $includeExtendedKeyUsages)
             .toggleStyle(.switch)
+            .disabled(editingDisabled)
     }
     
     private var extendedKeyUsagesCheckList: some View {
@@ -342,16 +413,19 @@ struct CertificateCreateView: View {
             )
             .toggleStyle(.checkbox)
         }
+        .disabled(editingDisabled)
     }
     
     private var subjectKeyIdentifierToggle: some View {
         Toggle("Subject Key Identifier", isOn: $includeSubjectKeyIdentifier)
             .toggleStyle(.switch)
+            .disabled(editingDisabled)
     }
     
     private var authorityKeyIdentifierToggle: some View {
         Toggle("Authority Key Identifier", isOn: $includeAuthorityKeyIdentifier)
             .toggleStyle(.switch)
+            .disabled(editingDisabled)
     }
     
     private var subjectAlternativeNameAddButton: some View {
@@ -363,6 +437,7 @@ struct CertificateCreateView: View {
                 Image(systemName: "plus")
             }
         }
+        .disabled(editingDisabled)
     }
     
     private var subjectAlternativeNamesList: some View {
@@ -381,6 +456,7 @@ struct CertificateCreateView: View {
             }
             .padding(4)
         }
+        .disabled(editingDisabled)
     }
     
     private var controlView: some View {
@@ -403,25 +479,32 @@ struct CertificateCreateView: View {
                 )
                 
                 let algorithm = makeSignatureAlgorithm()
-                let password = needP12Container ? p12Password : nil
+                let password = p12Required ? p12Password : nil
                 
-                model.createCertificate(
-                    version: version,
-                    commonName: commonName,
-                    organizationName: organizationName,
-                    signing: certSigning,
-                    lifetime: lifetime,
-                    extensions: extensions,
-                    algorithm: algorithm,
-                    p12Password: password
-                ) { result in
-                    switch result {
-                    case .success:
-                        dismiss()
-                        
-                    case .failed(let error):
-                        alertText = error
-                        alertPresented.toggle()
+                if case .newTemplate = type {
+                    model.createTemplate(
+                        name: templateName,
+                        version: version,
+                        organizationName: organizationName,
+                        lifetime: lifetime,
+                        extensions: extensions,
+                        algorithm: algorithm,
+                        p12Password: password) { result in
+                            handleResult(result)
+                        }
+                    
+                } else {
+                    model.createCertificate(
+                        version: version,
+                        commonName: commonName,
+                        organizationName: organizationName,
+                        signing: certSigning,
+                        lifetime: lifetime,
+                        extensions: extensions,
+                        algorithm: algorithm,
+                        p12Password: password
+                    ) { result in
+                        handleResult(result)
                     }
                 }
             }
@@ -475,6 +558,17 @@ struct CertificateCreateView: View {
             
         case .eddsaWithCurve25519:
             return .eddsaWithCurve25519
+        }
+    }
+    
+    private func handleResult(_ result: CreateCertificateResult) {
+        switch result {
+        case .success:
+            dismiss()
+            
+        case .failed(let error):
+            alertText = error
+            alertPresented.toggle()
         }
     }
 }
@@ -534,6 +628,178 @@ private struct SANCreateView: View {
             .padding(.top)
         }
         .padding()
+    }
+}
+
+extension CertificateCreateView {
+    enum Signing: String, CaseIterable, Identifiable {
+        case selfSigned = "Self-Signed"
+        case signedByCA = "Signed by CA"
+        
+        var id: String { rawValue }
+    }
+    
+    enum BasicConstraints: String, CaseIterable, Identifiable {
+        fileprivate enum MaxPathLength: String, CaseIterable, Identifiable {
+            case limited = "Limited"
+            case unlimited = "Unlimited"
+            
+            var id: String { rawValue }
+        }
+        
+        case isCertificateAuthority = "Is Certificate Authority"
+        case notCertificateAuthority = "Not Certificate Authority"
+        
+        var id: String { rawValue }
+    }
+    
+    fileprivate enum SignatureAlgorithm: String, CaseIterable, Identifiable {
+        case rsa = "RSA"
+        case ecdsa = "ECDSA"
+        case eddsaWithCurve25519 = "EdDSA with Curve25519"
+        
+        var id: String { rawValue }
+    }
+    
+    private init(
+        model: ContentViewModel,
+        type: CreateType,
+        version: TLSCertificate.Version = .v3,
+        organizationName: String = "",
+        signing: Signing = .selfSigned,
+        lifetime: TimeInterval,
+        basicConstraints: BasicConstraints = .notCertificateAuthority,
+        maxPathLength: BasicConstraints.MaxPathLength = .unlimited,
+        pathLength: Int = 0,
+        includeKeyUsages: Bool = false,
+        keyUsages: Set<TLSCertificate.Extensions.KeyUsage> = .init(),
+        includeExtendedKeyUsages: Bool = false,
+        extendedKeyUsages: Set<TLSCertificate.Extensions.ExtendedKeyUsage> = .init(),
+        includeSubjectKeyIdentifier: Bool = false,
+        includeAuthorityKeyIdentifier: Bool = false,
+        subjectAlternativeNames: Set<TLSCertificate.Extensions.SubjectAlternativeName> = .init(),
+        signature: SignatureAlgorithm = .rsa,
+        keySize: TLSCertificate.SignatureAlgorithm.RSAKeySize = .bits2048,
+        hashFunction: TLSCertificate.SignatureAlgorithm.HashFunction = .sha256,
+        p12Required: Bool = false,
+        p12Password: String = "",
+        editingDisabled: Bool = false
+    ) {
+        self.model = model
+        self.type = type
+        self.version = version
+        self.organizationName = organizationName
+        self.signing = signing
+        self.lifetime = lifetime
+        self.basicConstraints = basicConstraints
+        self.maxPathLength = maxPathLength
+        self.pathLength = pathLength
+        self.includeKeyUsages = includeKeyUsages
+        self.keyUsages = keyUsages
+        self.includeExtendedKeyUsages = includeExtendedKeyUsages
+        self.extendedKeyUsages = extendedKeyUsages
+        self.includeSubjectKeyIdentifier = includeSubjectKeyIdentifier
+        self.includeAuthorityKeyIdentifier = includeAuthorityKeyIdentifier
+        self.subjectAlternativeNames = subjectAlternativeNames
+        self.signature = signature
+        self.keySize = keySize
+        self.hashFunction = hashFunction
+        self.p12Required = p12Required
+        self.p12Password = p12Password
+        self.editingDisabled = editingDisabled
+    }
+}
+
+private extension CertificateCreateView.BasicConstraints {
+    static func from(_ basicConstraints: TLSCertificate.Extensions.BasicConstraints) -> Self {
+        return switch basicConstraints {
+        case .isCertificateAuthority: .isCertificateAuthority
+        case .notCertificateAuthority: .notCertificateAuthority
+        }
+    }
+}
+
+private extension CertificateCreateView.BasicConstraints.MaxPathLength {
+    static func from(_ basicConstraints: TLSCertificate.Extensions.BasicConstraints) -> Self {
+        switch basicConstraints {
+        case .isCertificateAuthority(let maxPathLength):
+            return switch maxPathLength {
+            case .limited: .limited
+            case .unlimited: .unlimited
+            }
+            
+        case .notCertificateAuthority:
+            return .unlimited
+        }
+    }
+}
+
+private extension TLSCertificate.Extensions.BasicConstraints {
+    var pathLength: Int? {
+        switch self {
+        case .isCertificateAuthority(let maxPathLength):
+            switch maxPathLength {
+            case .limited(let count):
+                return count
+                
+            case .unlimited:
+                return nil
+            }
+            
+        case .notCertificateAuthority:
+            return nil
+        }
+    }
+}
+
+private extension CertificateCreateView.SignatureAlgorithm {
+    static func from(_ algorithm: TLSCertificate.SignatureAlgorithm) -> Self {
+        return switch algorithm {
+        case .ecdsa: .ecdsa
+        case .rsa: .rsa
+        case .eddsaWithCurve25519: .eddsaWithCurve25519
+        }
+    }
+}
+
+private extension TLSCertificate.SignatureAlgorithm {
+    var keySize: RSAKeySize? {
+        switch self {
+        case .rsa(let keySize, _):
+            return keySize
+            
+        case .eddsaWithCurve25519, .ecdsa:
+            return nil
+        }
+    }
+    
+    var hashFunction: HashFunction? {
+        switch self {
+        case .ecdsa(let hashFunction), .rsa(_, let hashFunction):
+            return hashFunction
+            
+        case .eddsaWithCurve25519:
+            return nil
+        }
+    }
+}
+
+private extension TLSCertificateTemplate.P12Info {
+    var isRequired: Bool {
+        return switch self {
+        case .notRequired: false
+        case .required: true
+        }
+    }
+    
+    var password: String? {
+        switch self {
+        case .notRequired:
+            return nil
+            
+        case .required(let password):
+            return password
+        }
     }
 }
 

@@ -14,6 +14,7 @@ struct ContentView: View {
         case intermediateCA = "Intermediate CA"
         case nonCACertificates = "Non-CA Certificates"
         case leafCertificates = "Leaf Certificates"
+        case templates = "Templates"
         
         var id: String { rawValue }
         
@@ -24,6 +25,7 @@ struct ContentView: View {
             case .intermediateCA: "shield.pattern.checkered"
             case .nonCACertificates: "shield.lefthalf.filled.slash"
             case .leafCertificates: "leaf.fill"
+            case .templates: "list.bullet.rectangle.fill"
             }
         }
     }
@@ -31,7 +33,7 @@ struct ContentView: View {
     @StateObject private var model = ContentViewModel()
     
     @State private var currentSection: CertificatesSection = .allCertificates
-    @State private var createCertPresented = false
+    @State private var createCertificatePresented = false
     
     var body: some View {
         NavigationSplitView {
@@ -45,7 +47,7 @@ struct ContentView: View {
         } content: {
             switch currentSection {
             case .allCertificates:
-                certificatesList(certs: model.certs)
+                certificatesList(certs: model.certificates)
                 
             case .selfSignedCA:
                 certificatesList(certs: model.selfSignedCertAuthorites)
@@ -58,6 +60,9 @@ struct ContentView: View {
                 
             case .leafCertificates:
                 certificatesList(certs: model.leafCertificates)
+                
+            case .templates:
+                templatesList(temps: model.templates)
             }
             
         } detail: {
@@ -67,7 +72,7 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    createCertPresented.toggle()
+                    createCertificatePresented.toggle()
                     
                 } label: {
                     Image(systemName: "plus")
@@ -75,11 +80,47 @@ struct ContentView: View {
                 .keyboardShortcut("n", modifiers: .command)
             }
         }
-        .sheet(isPresented: $createCertPresented) {
-            CertificateCreateView(model: model)
+        .sheet(isPresented: $createCertificatePresented) {
+            switch currentSection {
+            case .allCertificates:
+                CertificateCreateView(model: model, type: .newCertificate)
+                
+            case .selfSignedCA:
+                CertificateCreateView(
+                    model: model,
+                    type: .newCertificate,
+                    basicConstraints: .isCertificateAuthority
+                )
+                
+            case .intermediateCA:
+                CertificateCreateView(
+                    model: model,
+                    type: .newCertificate,
+                    signing: .signedByCA,
+                    basicConstraints: .isCertificateAuthority
+                )
+                
+            case .nonCACertificates:
+                CertificateCreateView(
+                    model: model,
+                    type: .newCertificate,
+                    signing: .signedByCA,
+                    basicConstraints: .notCertificateAuthority
+                )
+                
+            case .leafCertificates:
+                CertificateCreateView(
+                    model: model,
+                    type: .newCertificate,
+                    basicConstraints: .notCertificateAuthority
+                )
+                
+            case .templates:
+                CertificateCreateView(model: model, type: .newTemplate)
+            }
         }
         .onAppear {
-            model.loadCertificates()
+            model.loadCertificatesAndTemplates()
         }
     }
     
@@ -90,8 +131,14 @@ struct ContentView: View {
                     .id(cert.id)
                 
             } label: {
-                CertificateCellView(cert: cert, model: model)
+                CertificateCellView(model: model, value: .certificate(cert))
             }
+        }
+    }
+    
+    private func templatesList(temps: [TLSCertificateTemplate]) -> some View {
+        List(temps, id: \.id) { temp in
+            CertificateCellView(model: model, value: .template(temp))
         }
     }
 }

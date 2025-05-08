@@ -30,26 +30,28 @@ enum CreateCertificateResult {
 
 final class ContentViewModel: ObservableObject {
     @Published var state: ContentViewState = .idle
-    @Published var certs = [TLSCertificate]()
+    
+    @Published var certificates = [TLSCertificate]()
+    @Published var templates = [TLSCertificateTemplate]()
     
     var selfSignedCertAuthorites: [TLSCertificate] {
-        certs.filter { $0.signing == .selfSigned && $0.isCertificateAuthority }
+        certificates.filter { $0.signing == .selfSigned && $0.isCertificateAuthority }
     }
     
     var intermediateCertAuthorities: [TLSCertificate] {
-        certs.filter { $0.signing != .selfSigned && $0.isCertificateAuthority }
+        certificates.filter { $0.signing != .selfSigned && $0.isCertificateAuthority }
     }
     
     var nonCertAuthorities: [TLSCertificate] {
-        certs.filter { $0.signing != .selfSigned && !$0.isCertificateAuthority }
+        certificates.filter { $0.signing != .selfSigned && !$0.isCertificateAuthority }
     }
     
     var leafCertificates: [TLSCertificate] {
-        certs.filter { $0.signing == .selfSigned && !$0.isCertificateAuthority }
+        certificates.filter { $0.signing == .selfSigned && !$0.isCertificateAuthority }
     }
     
     var availableCertAuthorities: [TLSCertificate] {
-        certs.filter { cert in
+        certificates.filter { cert in
             guard case .isCertificateAuthority(let maxPathLength) = cert.extensions.basicConstraints else {
                 return false
             }
@@ -69,15 +71,22 @@ final class ContentViewModel: ObservableObject {
     
     private lazy var logger = os.Logger(subsystem: Bundle.main.appId, category: "ContentViewModel")
     
-    func loadCertificates() {
+    // TODO: make async loading certificates and templates
+    func loadCertificatesAndTemplates() {
         guard state == .idle || state.isFail else { return }
         
         Task {
             do {
-                let certs = try await storage.fetch().sorted(by: { $0.createDate > $1.createDate })
+                let certs = try await storage.fetchCertificates()
+                    .sorted(by: { $0.createDate > $1.createDate })
+                
+                let temps = try await storage.fetchTemplates()
+                    .sorted(by: { $0.date > $1.date })
                 
                 Task { @MainActor in
-                    self.certs = certs
+                    self.certificates = certs
+                    self.templates = temps
+                    
                     self.state = .loaded
                 }
                 
@@ -101,7 +110,7 @@ final class ContentViewModel: ObservableObject {
         completion: @escaping (CreateCertificateResult) -> Void
     ) {
         Task {
-            guard !certs.contains(where: { $0.commonName == commonName }) else {
+            guard !certificates.contains(where: { $0.commonName == commonName }) else {
                 completion(.failed("Certificate with same name already exists"))
                 return
             }
@@ -144,10 +153,10 @@ final class ContentViewModel: ObservableObject {
                         p12Info: p12Info
                     )
                     
-                    try await storage.save(cert: certificate)
+                    try await storage.saveCertificate(certificate)
                     
                     Task { @MainActor in
-                        certs.insert(certificate, at: 0)
+                        certificates.insert(certificate, at: 0)
                         completion(.success)
                     }
                     
@@ -166,10 +175,10 @@ final class ContentViewModel: ObservableObject {
                         algorithm: algorithm
                     )
                     
-                    try await storage.save(cert: certificate)
+                    try await storage.saveCertificate(certificate)
                     
                     Task { @MainActor in
-                        certs.insert(certificate, at: 0)
+                        certificates.insert(certificate, at: 0)
                         completion(.success)
                     }
                 }
@@ -184,10 +193,49 @@ final class ContentViewModel: ObservableObject {
         }
     }
     
+    func createTemplate(
+        name: String,
+        version: TLSCertificate.Version,
+        organizationName: String,
+        lifetime: TimeInterval,
+        extensions: TLSCertificate.Extensions,
+        algorithm: TLSCertificate.SignatureAlgorithm,
+        p12Password: String?,
+        completion: @escaping (CreateCertificateResult) -> Void
+    ) {
+        Task {
+            do {
+                let template = TLSCertificateTemplate(
+                    name: name,
+                    version: version,
+                    organizationName: organizationName,
+                    lifetime: lifetime,
+                    extensions: extensions,
+                    algorithm: algorithm,
+                    p12Info: p12Password.map { .required(p12Password: $0) } ?? .notRequired
+                )
+                
+                try await storage.saveTemplate(template)
+                
+                Task { @MainActor in
+                    templates.insert(template, at: 0)
+                    completion(.success)
+                }
+                
+            } catch let err {
+                error("can't create template: \(err)")
+                
+                Task { @MainActor in
+                    completion(.failed(err.localizedDescription))
+                }
+            }
+        }
+    }
+    
     func deleteCertificate(_ cert: TLSCertificate) {
         Task {
             do {
-                try await storage.delete(cert: cert)
+                try await storage.deleteCertififcate(cert)
                 
                 try FileManager.default.removeItem(at: cert.certUrl)
                 try FileManager.default.removeItem(at: cert.keyUrl)
@@ -196,16 +244,35 @@ final class ContentViewModel: ObservableObject {
                     try FileManager.default.removeItem(at: p12Info.url)
                 }
                 
-                guard let index = certs.firstIndex(where: { $0.id == cert.id }) else {
+                guard let index = certificates.firstIndex(where: { $0.id == cert.id }) else {
                     return
                 }
                 
                 Task { @MainActor in
-                    certs.remove(at: index)
+                    certificates.remove(at: index)
                 }
                 
             } catch let err {
                 error("can't delete certificate: \(err)")
+            }
+        }
+    }
+    
+    func deleteTemplate(_ temp: TLSCertificateTemplate) {
+        Task {
+            do {
+                try await storage.deleteTemplate(temp)
+                
+                guard let index = templates.firstIndex(where: { $0.id == temp.id }) else {
+                    return
+                }
+                
+                Task { @MainActor in
+                    templates.remove(at: index)
+                }
+                
+            } catch let err {
+                error("can't delete template: \(err)")
             }
         }
     }
