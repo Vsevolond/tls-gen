@@ -79,15 +79,15 @@ struct CertificateCreateView: View {
     ) {
         switch type {
         case .newCertificate:
-            self.init(model: model, type: type, signing: signing, basicConstraints: basicConstraints)
+            self.init(type: type, model: model, signing: signing, basicConstraints: basicConstraints)
             
         case .newTemplate:
-            self.init(model: model, type: type)
+            self.init(type: type, model: model)
             
         case .templateCertificate(let template):
             self.init(
-                model: model,
                 type: type,
+                model: model,
                 version: template.version,
                 organizationName: template.organizationName,
                 lifetime: template.lifetime,
@@ -662,12 +662,12 @@ extension CertificateCreateView {
     }
     
     private init(
-        model: ContentViewModel,
         type: CreateType,
+        model: ContentViewModel,
         version: TLSCertificate.Version = .v3,
         organizationName: String = "",
         signing: Signing = .selfSigned,
-        lifetime: TimeInterval,
+        lifetime: TimeInterval = .year,
         basicConstraints: BasicConstraints = .notCertificateAuthority,
         maxPathLength: BasicConstraints.MaxPathLength = .unlimited,
         pathLength: Int = 0,
