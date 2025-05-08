@@ -19,13 +19,11 @@ struct CertificateCreateView: View {
     private let type: CreateType
     
     @State private var version: TLSCertificate.Version
+    @State private var commonName = ""
     @State private var organizationName: String
     @State private var signing: Signing
     @State private var certAuthority: TLSCertificate? = nil
     @State private var lifetime: TimeInterval
-    
-    @State private var commonName = ""
-    @State private var templateName = ""
     
     @State private var basicConstraints: BasicConstraints
     @State private var maxPathLength: BasicConstraints.MaxPathLength
@@ -242,7 +240,7 @@ struct CertificateCreateView: View {
     }
     
     private var templateNameField: some View {
-        TextField("Template Name", text: $templateName)
+        TextField("Template Name", text: $commonName)
             .textFieldStyle(.roundedBorder)
     }
     
@@ -483,7 +481,7 @@ struct CertificateCreateView: View {
                 
                 if case .newTemplate = type {
                     model.createTemplate(
-                        name: templateName,
+                        name: commonName,
                         version: version,
                         organizationName: organizationName,
                         lifetime: lifetime,
