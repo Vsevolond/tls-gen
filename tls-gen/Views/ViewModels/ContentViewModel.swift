@@ -51,19 +51,7 @@ final class ContentViewModel: ObservableObject {
     }
     
     var availableCertAuthorities: [TLSCertificate] {
-        certificates.filter { cert in
-            guard case .isCertificateAuthority(let maxPathLength) = cert.extensions.basicConstraints else {
-                return false
-            }
-            
-            switch maxPathLength {
-            case .unlimited:
-                return true
-                
-            case .limited(let count):
-                return count > 0
-            }
-        }
+        certificates.filter { $0.isCertificateAuthority }
     }
     
     private let storage = Storage()
